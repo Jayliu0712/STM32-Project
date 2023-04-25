@@ -1,0 +1,85 @@
+第一次做的代码：
+timer.c
+#include "stm32f10x.h"
+
+uint32_t Step[500];
+
+static void NVIC_Config(void)
+{
+	NVIC_InitTypeDef NVIC_InitStructure;
+	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);//设置中断组0
+	NVIC_InitStructure.NVIC_IRQChannel = TIM3_IRQn;//设置中断源
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;//抢占优先级
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;//响应优先级
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
+}
+
+static void Timer_Config(void)
+{
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO,ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB,ENABLE);
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3,ENABLE);
+	
+	GPIO_PinRemapConfig(GPIO_PartialRemap_TIM3, ENABLE);
+	
+	GPIO_InitTypeDef GPIO_InitStructure;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+	
+	GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable,ENABLE);
+	
+	TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure;
+	TIM_TimeBaseInitStructure.TIM_ClockDivision = TIM_CKD_DIV1;
+	TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up;
+	TIM_TimeBaseInitStructure.TIM_Period = 65535;//ARR
+	TIM_TimeBaseInitStructure.TIM_Prescaler = 1-1;//PSC
+	TIM_TimeBaseInit(TIM3,&TIM_TimeBaseInitStructure);
+	
+	TIM_ITConfig(TIM3,TIM_IT_CC1,ENABLE);
+	/*
+	TIM_IT_CC1~CC4捕获/比较中断：输入捕获，输出比较；
+	TIM_IT_Update更新中断：与TIM_IT_Trigger(触发中断)的区别就是，更新中断：计数器向上溢出/向下溢出，计数器初始化(通过软件或者内部/外部触发)，产生中断；
+	TIM_IT_Trigger触发中断：计数器启动、停止、初始化或者由内部/外部触发计数。
+	*/ 
+	TIM_OCInitTypeDef TIM_OCInitStructure;
+	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_Toggle;
+	TIM_OCInitStructure.TIM_Pulse = 0;//CCR 设置占空比
+	TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
+	TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
+	TIM_OC1Init(TIM3, &TIM_OCInitStructure);
+	
+	TIM_OC1PreloadConfig(TIM3, TIM_OCPreload_Disable);  // 使能 TIM2 在 CCR1 上的预装载寄存器
+	TIM_OC1PreloadConfig(TIM3, ENABLE);  // 使能重装载寄存器
+	
+	TIM_Cmd(TIM3,ENABLE);
+}
+
+void Timer_Init(void)
+{
+	NVIC_Config();
+	Timer_Config();
+}
+	
+void TIM3_IRQHandler(void)
+{
+	if(TIM_GetITStatus(TIM3,TIM_IT_CC1) != RESET)
+	{
+		TIM_ClearITPendingBit(TIM3,TIM_IT_CC1);
+	}
+	
+}
+
+timer.h
+#ifndef __TIMER_H
+#define __TIMER_H
+
+#define DIR(a)	if (a == CW) 
+	              GPIO_ResetBits(MSD_DIR_PORT,MSD_DIR_PIN);
+                else GPIO_SetBits(MSD_DIR_PORT,MSD_DIR_PIN)
+					
+void timer_initial(void);
+
+#endif

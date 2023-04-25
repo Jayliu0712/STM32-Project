@@ -1,0 +1,157 @@
+第一次做的代码：
+
+motor.c
+//#include "stm32f10x.h"
+//#include "math.h"
+
+//void motor_initial(void)
+//{
+//	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD,ENABLE);
+//	/*
+//	使能PD2 根据驱动板原理图可知 PD2是ENA使能口，必须去使能一下
+//	可能你要问为何这里没有使能PB3的时钟，因为程序只执行main
+//	main里pwm_initial()里面已经使能过PB的时钟了。
+//	并且也开启映射，关闭调试口了。这里就不再重复写
+//	*/
+//	GPIO_InitTypeDef GPIO_InitStructure;
+//	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+//	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
+//	/*
+//	PB3 只有重映射之后才能当普通IO口用。
+//	PB3,PB4,PA13,PA14,PA15这五个特殊IO口
+//	只需要GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable/NoJTRST/JTAGDisable,ENABLE);
+//	就可以开启重映射中他们的IO口功能
+//	若要开启定时器等其他映射功能，则应该要加GPIO_PinRemapConfig(GPIO_PartialRemap/FullRemap_TIMx,ENABLE);
+//	具体问题具体分析，相应的怎么使用应该去查数据手册，Pinout and Pin Description，参考手册 复用功能IO和调试配置里的定时器部分
+//	和JTAG/SWG部分。
+//	那么，复用功能又要如何开启呢？
+//	这个具体可以看我的3、按键控制PWM（多次） 其中的PWM波输出，那个就用到了复用功能
+//	开启复用只需将TIM2定时器时钟使能，然后输出模式定义为复用推挽/开漏就行。
+//	*/ 
+//	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+//	GPIO_Init(GPIOB,&GPIO_InitStructure);
+//	
+//	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+//	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
+//	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+//	GPIO_Init(GPIOD,&GPIO_InitStructure);
+//	
+//	GPIO_SetBits(GPIOD,GPIO_Pin_2);
+//}
+
+//void Step_initial(uint32_t *pbuff,uint32_t freq,int16_t count)
+//{
+//	int16_t i;
+//	for(i = 0;i<count;i++)
+//	{
+//		*pbuff++ = (uint32_t)ceil(((float)(freq))/(1.0+exp((-i*14.0/count)+7.0)));//   加速度公式 5000/(1+e^((-14x/500)+7)) 用EXCEL画出来是一条s型曲线
+// 上面语句*pbuff++ = *（pbuff++）,语句意思是将后面表达式的值给指针pbuff，并将指针pbuff的地址值+1（个单位）
+//	}	
+//}
+
+motor.h
+#ifndef __MOTOR_H
+#define __MOTOR_H
+
+void motor_initial(void);
+
+#endif
+
+//	int16_t i;
+//	for(i = 0;i<count;i++)
+//	{
+//		*SaveStatus++ = (uint32_t)ceil(((float)(freq))/(1.0+exp((-i*14.0/count)+7.0)));//   加速度公式 5000/(1+e^((-14x/500)+7)) 用EXCEL画出来是一条s型曲线
+//	}	
+
+//typedef struct{
+//	unsigned int Speed;
+//	unsigned int CountTemp;
+//	unsigned int CountPropor;
+//	unsigned int Count;
+//	unsigned int Status;
+//}Motor;
+/*
+定义一个结构体，但我不知为何直接用struct{...}motor;不行，typedef是个啥？需要去了解一下
+然后为何在motor.c里用这个结构体，非要再次Motor M一下？
+*/
+
+#define DIR(a)	if (a == CW) \
+					GPIO_ResetBits(GPIOB,GPIO_Pin_3);\
+					else \
+					GPIO_SetBits(GPIOB,GPIO_Pin_3)\
+					不加斜杠报错，为什么？？
+---------------------************************************************************************************************************------------------------
+本次程序实现了STM32控制42步进电机梯形加减速，并且可以调整参数控制前进步数。
+这次程序做那么久，并非是对公式的理解出了问题，而是对STM32定时器模式的了解还不够透彻。
+原本使用：    
+TIM3->CCR1=srd.step_delay >> 1;//周期的一半
+TIM3->ARR=srd.step_delay;
+定时器PWM1模式;
+采用更新中断;
+
+此法同时修改ARR与CCR的值，修改频率，而周期不变
+但是却实现不了程序，目前还不知道原因是什么，理论上是可行的呀
+有空再看看。
+*********************************************************
+而后改成了：
+TIM_CNTCount = TIM3->CNT; （取出计数器CNT中的值）
+Temp = TIM_CNTCount + srd.step_delay; （将上一语句取出的值与算法算出的延时相加存入中间变量）
+TIM_SetCompare1(TIM3,Temp);           （将CCR1的值改为中间变量的值）
+定时器toggle模式;
+采用比较中断;
+
+这里为何要这么写
+i++;     // 定时器中断次数计数值
+	if(i==2) // 进入中断2次，说明已经输出一个完整脉冲，即翻转了两次
+		{
+			i=0;   // 清零定时器中断次数计数值
+
+        -------*第二次翻转
+       |       |       |
+       |	   |       |
+       |	   |       |
+       |	   |       |
+       |	   |       | 
+-------*	    -------
+     第一次翻转
+！！！两次翻转才组成一次完整的周期！！！
+所以才进入两次中断才再次修改CCR的值
+
+写程序过程中在程序里写的注释附下
+
+/*
+计算得到min_delay用于定时器的计数器的值。
+2π：圆周角 360°/走一圈需要的步数200 = 1.8°,
+1.8°/细分数 得到细分后每个脉冲走的角度,
+乘定时器频率(本来是除以计数周期，因为T=1/f,即计数周期等于定时器频率的倒数，所以用乘以定时器频率)。
+min_delay = (alpha / tt)/ w,
+（2π/细分步数）*定时器频率
+*/
+***************************srd.min_delay = (int)(A /speed);****************************
+/*
+因为角速度w = α/δt，即速度等于步距角除以两脉冲时间间隔，又δt = C*tt，
+即δt = C*tt = (α*ft)/w,
+*/
+***************************srd.step_delay = (long)((( B * sqrt(C/accel))*10));//算C0******************
+/*
+即C0(第1个脉冲的延时周期) = 1/tt*(sqrt(2α/w))
+1/tt=ft,乘0.676是为了在第一个C里就消掉误差，之后的参数cn都是基于第一个c即step_delay来进行运算的
+我算出来的误差是0.424，这里就用0.424代替了0.676
+*/
+		
+***************************maxs_step = (unsigned int)(speed*speed/(D*accel));***************************
+  // 计算多少步之后达到最大速度的限制
+  // max_s_lim = speed^2 / (2*alpha*accel)		
+  
+#define TIM1_FREQ 1000000
+#define SPR 200
+#define DIV_SPR (SPR*16)
+#define ALPHA ((float)(2*3.14159/DIV_SPR)) //定义函数常量，方便计算
+
+#define A ((long)(ALPHA*TIM1_FREQ*100))
+#define B ((long)(TIM1_FREQ*0.424))
+#define C ((float)(ALPHA*2))
+#define D ((float)(ALPHA*200))
+
+！需要注意的是使用强制类型转换，数据和类型一定要对的上，不然程序会错乱！
+！！具体过程在PROGRAMMING TIPS本子里有记录！！

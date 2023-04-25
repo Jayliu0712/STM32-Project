@@ -1,0 +1,6 @@
+--c99 -c --cpu Cortex-M3 -g -O0 --apcs=interwork --split_sections -I.\Start -I.\Lib -I.\System -I.\Hardware -I.\User
+-I C:\Users\Administrator\Desktop\Test\5、定时器中断电机驱动、串口通讯控制电机启动\RTE
+-I C:\Keil_v5\ARM\PACK\Keil\STM32F1xx_DFP\2.3.0
+-I C:\Keil_v5\ARM\CMSIS\Include
+-D__UVISION_VERSION="514" -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER
+-o .\objects\timer.o --omf_browse .\objects\timer.crf --depend .\objects\timer.d "System\timer.c"
