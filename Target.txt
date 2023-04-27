@@ -1,0 +1,2 @@
+做DMA+串口空闲中断，精进project 6 的代码，实现更复杂的功能。
+可以的话把Modbus也给做了，不行就另开一个project做Modebus。
